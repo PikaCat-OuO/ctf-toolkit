@@ -33,7 +33,7 @@ explored_pages = []
 # List of custom pages that can be managed manually by vmmap_* commands family
 custom_pages = []
 
-@pwndbg.events.new_objfile
+@pwndbg.memoize.reset_on_start
 @pwndbg.memoize.reset_on_stop
 def get():
     if not pwndbg.proc.alive:
@@ -52,8 +52,14 @@ def get():
         # following links.
         pages.extend(info_auxv())
 
-        if pages: pages.extend(info_sharedlibrary())
-        else:     pages.extend(info_files())
+        if pages:
+            pages.extend(info_sharedlibrary())
+        else:
+            if pwndbg.qemu.is_usermode():
+                return (
+                    pwndbg.memory.Page(0, pwndbg.arch.ptrmask, 7, 0, '[qemu-user]'),
+                )
+            pages.extend(info_files())
 
         pages.extend(pwndbg.stack.stacks.values())
 
@@ -112,13 +118,13 @@ def explore(address_maybe):
     return page
 
 # Automatically ensure that all registers are explored on each stop
-@pwndbg.events.stop
+#@pwndbg.events.stop
 def explore_registers():
     for regname in pwndbg.regs.common:
         find(pwndbg.regs[regname])
 
 
-@pwndbg.events.exit
+#@pwndbg.events.exit
 def clear_explored_pages():
     while explored_pages:
         explored_pages.pop()
@@ -143,6 +149,7 @@ def clear_custom_page():
     pwndbg.memoize.reset()
 
 
+@pwndbg.memoize.reset_on_start
 @pwndbg.memoize.reset_on_stop
 def proc_pid_maps():
     """
@@ -200,10 +207,12 @@ def proc_pid_maps():
     for line in data.splitlines():
         maps, perm, offset, dev, inode_objfile = line.split(None, 4)
 
-        try:    inode, objfile = inode_objfile.split(None, 1)
-        except: objfile = ''
-
         start, stop = maps.split('-')
+        
+        try:
+            inode, objfile = inode_objfile.split(None, 1)
+        except:
+            objfile = '[anon_' + start[:-3] + ']'
 
         start  = int(start, 16)
         stop   = int(stop, 16)
@@ -422,31 +431,23 @@ def find_boundaries(addr, name='', min=0):
 
     return pwndbg.memory.Page(start, end-start, 4, 0, name)
 
-aslr = False
-
-@pwndbg.events.new_objfile
-@pwndbg.memoize.while_running
 def check_aslr():
-    vmmap = sys.modules[__name__]
-    vmmap.aslr = False
+    """
+    Detects the ASLR status. Returns True, False or None.
 
-    # Check to see if ASLR is disabled on the system.
-    # if not pwndbg.remote.is_remote():
-    system_aslr = True
-    data        = b''
-
+    None is returned when we can't detect ASLR.
+    """
     # QEMU does not support this concept.
-    if pwndbg.qemu.is_qemu_usermode():
-        return vmmap.aslr
+    if pwndbg.qemu.is_qemu():
+        return None, 'Could not detect ASLR on QEMU targets'
 
     # Systemwide ASLR is disabled
     try:
         data = pwndbg.file.get('/proc/sys/kernel/randomize_va_space')
         if b'0' in data:
-            vmmap.aslr = False
-            return vmmap.aslr, 'kernel.randomize_va_space == 0'
+            return False, 'kernel.randomize_va_space == 0'
     except Exception as e:
-        print("Could not check ASLR: Couldn't get randomize_va_space")
+        print("Could not check ASLR: can't read randomize_va_space")
         pass
 
     # Check the personality of the process
@@ -454,11 +455,9 @@ def check_aslr():
         try:
             data = pwndbg.file.get('/proc/%i/personality' % pwndbg.proc.pid)
             personality = int(data, 16)
-            if personality & 0x40000 == 0:
-                vmmap.aslr = True
-            return vmmap.aslr, 'read status from process\' personality'
+            return (personality & 0x40000 == 0), 'read status from process\' personality'
         except:
-            print("Could not check ASLR: Couldn't get personality")
+            print("Could not check ASLR: can't read process' personality")
             pass
 
     # Just go with whatever GDB says it did.
@@ -466,10 +465,7 @@ def check_aslr():
     # This should usually be identical to the above, but we may not have
     # access to procfs.
     output = gdb.execute('show disable-randomization', to_string=True)
-    if "is off." in output:
-        vmmap.aslr = True
-
-    return vmmap.aslr, 'show disable-randomization'
+    return ("is off." in output), 'show disable-randomization'
 
 @pwndbg.events.cont
 def mark_pc_as_executable():

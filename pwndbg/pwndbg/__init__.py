@@ -23,14 +23,17 @@ import pwndbg.commands.dt
 import pwndbg.commands.dumpargs
 import pwndbg.commands.elf
 import pwndbg.commands.gdbinit
+import pwndbg.commands.ghidra
 import pwndbg.commands.got
 import pwndbg.commands.heap
 import pwndbg.commands.hexdump
 import pwndbg.commands.ida
 import pwndbg.commands.leakfind
+import pwndbg.commands.memoize
 import pwndbg.commands.misc
 import pwndbg.commands.mprotect
 import pwndbg.commands.next
+import pwndbg.commands.p2p
 import pwndbg.commands.peda
 import pwndbg.commands.pie
 import pwndbg.commands.probeleak
@@ -109,6 +112,7 @@ __all__ = [
 'malloc',
 'memoize',
 'memory',
+'p2p',
 'proc',
 'regs',
 'remote',
@@ -160,5 +164,5 @@ signal.signal(signal.SIGWINCH, lambda signum, frame: gdb.execute("set width %i" 
 if 1:
     gdb.execute('set remote search-memory-packet off')
 
-# Reading Comment file 
+# Reading Comment file
 pwndbg.commands.comments.init()

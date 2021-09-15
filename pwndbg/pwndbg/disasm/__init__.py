@@ -75,10 +75,21 @@ def get_disassembler_cached(arch, ptrsize, endian, extra=None):
 
     mode |= CapstoneEndian[endian]
 
-    flavor = gdb.execute('show disassembly-flavor', to_string=True).lower().split('"')[1]
+    try:
+        flavor = gdb.execute('show disassembly-flavor', to_string=True).lower().split('"')[1]
+    except gdb.error as e:
+        if str(e).find("disassembly-flavor") > -1:
+            flavor = 'intel'
+        else:
+            raise
 
     cs = Cs(arch, mode)
-    cs.syntax = CapstoneSyntax[flavor]
+    try:
+        cs.syntax = CapstoneSyntax[flavor]
+    except CsError as ex:
+        pass
+    except:
+        raise
     cs.detail = True
     return cs
 
@@ -98,6 +109,9 @@ def get_disassembler(pc):
             
     elif pwndbg.arch.current == 'i8086':
         extra = CS_MODE_16
+
+    elif pwndbg.arch.current == 'mips' and 'isa32r6' in gdb.newest_frame().architecture().name():
+        extra = CS_MODE_MIPS32R6
     
     else:
         extra = None
@@ -207,9 +221,7 @@ def near(address, instructions=1, emulate=False, show_prev_insns=True):
     # If we hit the current instruction, we can do emulation going forward from there.
     if address == pc and emulate:
         emu = pwndbg.emu.emulator.Emulator()
-
-        # For whatever reason, the first instruction is emulated twice.
-        # Skip the first one here.
+        # skip current line
         emu.single_step()
 
     # Now find all of the instructions moving forward.

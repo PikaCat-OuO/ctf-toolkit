@@ -5,14 +5,13 @@ Find a chain of leaks given some starting address.
 """
 
 import argparse
-from queue import *
+import queue
 
 import gdb
 
 import pwndbg.color.chain as C
 import pwndbg.color.memory as M
 import pwndbg.color.message as message
-import pwndbg.color.theme as theme
 import pwndbg.commands
 import pwndbg.vmmap
 from pwndbg.chain import config_arrow_right
@@ -94,7 +93,7 @@ def leakfind(address=None, page_name=None, max_offset=0x40, max_depth=0x4, step=
     # We need to store both so that we can nicely create our leak chain.
     visited_map = {}
     visited_set = {int(address)}
-    address_queue = Queue()
+    address_queue = queue.Queue()
     address_queue.put(int(address))
     depth = 0
     time_to_depth_increase = 0

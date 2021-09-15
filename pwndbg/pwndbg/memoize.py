@@ -10,6 +10,8 @@ import collections
 import functools
 import sys
 
+import gdb
+
 import pwndbg.events
 
 debug = False
